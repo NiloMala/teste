@@ -13,6 +13,7 @@ import {
   Activity
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { UserProfile } from "./user-profile";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -66,19 +67,7 @@ export function Sidebar() {
       </ScrollArea>
 
       <div className="border-t border-sidebar-border p-4">
-        <div className="flex items-center space-x-3">
-          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
-            <span className="text-sm font-medium text-primary">A</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              Admin User
-            </p>
-            <p className="text-xs text-sidebar-foreground/60 truncate">
-              admin@example.com
-            </p>
-          </div>
-        </div>
+        <UserProfile />
       </div>
     </div>
   );
