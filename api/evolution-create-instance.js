@@ -16,6 +16,12 @@ export default async function handler(req, res) {
   const QR_API_URL = 'https://evo.auroratech.tech/manager/sessions/qr-code';
 
   try {
+    // Basic runtime checks
+    if (!EVOLUTION_API_TOKEN) {
+      console.error('EVOLUTION_API_TOKEN is not set in environment');
+      return res.status(500).json({ error: 'Server misconfiguration: missing EVOLUTION_API_TOKEN' });
+    }
+    console.log('Creating evolution instance, sessionName=', instanceName);
     // Cria a instância na Evolution API
     const createResp = await fetch(EVOLUTION_API_URL, {
       method: 'POST',
@@ -29,8 +35,9 @@ export default async function handler(req, res) {
       })
     });
     if (!createResp.ok) {
-      const err = await createResp.text();
-      return res.status(500).json({ error: 'Erro ao criar instância', details: err });
+      const errText = await createResp.text();
+      console.error('create session failed', createResp.status, errText);
+      return res.status(500).json({ error: 'Erro ao criar instância', status: createResp.status, details: errText });
     }
     // Busca o QR code
     const qrResp = await fetch(`${QR_API_URL}?sessionName=${instanceName}`, {
@@ -39,12 +46,15 @@ export default async function handler(req, res) {
       }
     });
     if (!qrResp.ok) {
-      const err = await qrResp.text();
-      return res.status(500).json({ error: 'Erro ao buscar QR code', details: err });
+      const errText = await qrResp.text();
+      console.error('fetch qr failed', qrResp.status, errText);
+      return res.status(500).json({ error: 'Erro ao buscar QR code', status: qrResp.status, details: errText });
     }
     const qrData = await qrResp.json();
-    return res.status(200).json({ qr: qrData.qr, instanceName });
+    console.log('QR data received:', Object.keys(qrData || {}));
+    return res.status(200).json({ qr: qrData.qr || qrData.data || qrData, instanceName });
   } catch (e) {
+    console.error('Unexpected error in evolution-create-instance:', e);
     return res.status(500).json({ error: 'Erro inesperado', details: String(e) });
   }
 }
