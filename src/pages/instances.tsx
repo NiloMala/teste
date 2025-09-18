@@ -14,6 +14,7 @@ import {
   Zap,
   Edit
 } from "lucide-react";
+import { useRef } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const mockInstances = [
@@ -48,6 +49,18 @@ const mockInstances = [
 
 export default function Instances() {
   const [instances, setInstances] = useState(mockInstances);
+  function getWebhookUrl(instanceId: string) {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/webhook/${instanceId}`;
+    }
+    return `https://seusistema.com/webhook/${instanceId}`;
+  }
+
+  // Estados para criação de instância
+  const [creating, setCreating] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [createdInstanceId, setCreatedInstanceId] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   const getStatusBadge = (status: string) => {
@@ -97,36 +110,46 @@ export default function Instances() {
                 <Input
                   id="name"
                   placeholder="Ex: WhatsApp Marketing"
+                  ref={nameRef}
+                  disabled={creating}
                 />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="instance-id">Instance ID</Label>
-                <Input
-                  id="instance-id"
-                  placeholder="Ex: marketing-001"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="auth-token">Token de Autenticação</Label>
-                <Input
-                  id="auth-token"
-                  type="password"
-                  placeholder="Token da Evolution API"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="api-url">URL da API</Label>
-                <Input
-                  id="api-url"
-                  placeholder="https://api.evolutionapi.com"
-                />
-              </div>
+              {/* Os campos de Instance ID, Token e URL foram removidos para segurança */}
             </div>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setIsCreateDialogOpen(false);
+                setQrCode(null);
+                setCreatedInstanceId(null);
+              }} disabled={creating}>
                 Cancelar
               </Button>
-              <Button variant="hero">
+              <Button variant="hero" disabled={creating} onClick={async () => {
+                if (!nameRef.current?.value) return;
+                setCreating(true);
+                setQrCode(null);
+                setCreatedInstanceId(null);
+                try {
+                  // Detecta ambiente para URL correta
+                  let apiUrl = "/api/evolution-create-instance";
+                  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+                    apiUrl = "http://localhost:4000/api/evolution-create-instance";
+                  }
+                  const resp = await fetch(apiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ instanceName: nameRef.current.value })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) throw new Error(data.error || "Erro ao criar instância");
+                  setQrCode(data.qr);
+                  setCreatedInstanceId(data.instanceName);
+                } catch (e: any) {
+                  alert(e.message || "Erro inesperado");
+                } finally {
+                  setCreating(false);
+                }
+              }}>
                 <Zap className="h-4 w-4" />
                 Conectar
               </Button>
@@ -134,6 +157,20 @@ export default function Instances() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* QR code após criação */}
+      {qrCode && createdInstanceId && (
+        <div className="flex flex-col items-center gap-2 my-4">
+          <p className="text-sm text-muted-foreground">Escaneie o QR code abaixo para autenticar o WhatsApp:</p>
+          <img src={qrCode} alt="QR Code" className="w-48 h-48 border rounded bg-white" />
+          <div className="flex flex-col items-center mt-2">
+            <span className="text-xs text-muted-foreground">Webhook URL:</span>
+            <code className="text-xs bg-muted/50 px-2 py-1 rounded flex-1 truncate">
+              {getWebhookUrl(createdInstanceId)}
+            </code>
+          </div>
+        </div>
+      )}
 
       {/* Lista de instâncias */}
       <div className="grid gap-6">

@@ -44,14 +44,19 @@ const nodeTypes = [
 const initialNodes = [
   {
     id: '1',
-    type: 'input',
+    type: 'http',
     position: { x: 250, y: 25 },
-    data: { label: 'Início do Fluxo' },
-    style: { 
-      background: 'hsl(var(--primary))', 
-      color: 'white',
-      border: '1px solid hsl(var(--primary))',
-      borderRadius: '8px'
+    data: {
+      label: 'Webhook (Evolution API)',
+      httpUrl: 'https://api.evolution.com/webhook',
+      httpMethod: 'POST',
+      httpPayload: '{ "event": "mensagem_recebida", "dados": {} }',
+    },
+    style: {
+      background: '#dcfce7',
+      color: '#222',
+      border: '2px solid #e5e7eb',
+      borderRadius: '8px',
     },
   },
 ];
@@ -61,24 +66,71 @@ const initialEdges: Edge[] = [];
 export default function FlowEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [selectedNodeType, setSelectedNodeType] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge(params, eds)),
     [setEdges],
   );
 
+  // Seleção de nó
+  const onNodeClick = useCallback((event: React.MouseEvent, node: any) => {
+    setSelectedNodeId(node.id);
+  }, []);
+
+  // Atualizar label do nó selecionado
+  const updateSelectedNodeLabel = (label: string) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === selectedNodeId ? { ...node, data: { ...node.data, label } } : node
+      )
+    );
+  };
+
   const addNode = (type: string) => {
+    let data: any = { label: nodeTypes.find(n => n.type === type)?.label || 'Novo Nó' };
+    switch (type) {
+      case 'trigger':
+        data.event = '';
+        break;
+      case 'message':
+        data.message = '';
+        break;
+      case 'media':
+        data.mediaUrl = '';
+        break;
+      case 'condition':
+        data.options = [
+          { id: 1, label: 'Opção 1' },
+          { id: 2, label: 'Opção 2' },
+        ];
+        break;
+      case 'http':
+        data.httpUrl = '';
+        data.httpMethod = 'GET';
+        data.httpPayload = '';
+        break;
+      case 'variable':
+        data.varName = '';
+        data.varValue = '';
+        break;
+      case 'wait':
+        data.waitTime = 1;
+        break;
+      case 'human':
+        data.instruction = '';
+        break;
+      default:
+        break;
+    }
     const newNode = {
       id: `${Date.now()}`,
-      type: 'default',
+      type: type,
       position: { 
         x: Math.random() * 400 + 100, 
         y: Math.random() * 400 + 100 
       },
-      data: { 
-        label: nodeTypes.find(n => n.type === type)?.label || 'Novo Nó'
-      },
+      data,
       style: {
         background: 'hsl(var(--card))',
         border: '1px solid hsl(var(--border))',
@@ -87,7 +139,11 @@ export default function FlowEditor() {
       }
     };
     setNodes((nds) => nds.concat(newNode));
+    setSelectedNodeId(newNode.id);
   };
+
+  // Encontrar nó selecionado
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
   return (
     <div className="flex h-full">
@@ -134,15 +190,34 @@ export default function FlowEditor() {
       {/* Editor principal */}
       <div className="flex-1 relative">
         <ReactFlow
-          nodes={nodes}
+          nodes={nodes.map(node => ({
+            ...node,
+            draggable: node.id === selectedNodeId,
+            style: {
+              ...node.style,
+              background:
+                node.type === 'trigger' ? '#e0e7ff' :
+                node.type === 'message' ? '#dbeafe' :
+                node.type === 'media' ? '#ede9fe' :
+                node.type === 'condition' ? '#fef9c3' :
+                node.type === 'http' ? '#dcfce7' :
+                node.type === 'variable' ? '#ffedd5' :
+                node.type === 'wait' ? '#f3f4f6' :
+                node.type === 'human' ? '#fee2e2' :
+                '#fff',
+              color: '#222',
+              border: '2px solid #e5e7eb',
+            },
+          }))}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          style={{ background: 'hsl(var(--background))' }}
+          onNodeClick={onNodeClick}
+          style={{ background: '#fff' }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         >
-          <Controls />
+          <Controls style={{ color: '#000' }} />
           <MiniMap 
             style={{
               backgroundColor: 'hsl(var(--card))',
@@ -156,8 +231,7 @@ export default function FlowEditor() {
             size={1} 
             color="hsl(var(--muted-foreground) / 0.3)"
           />
-          
-          <Panel position="top-right" className="space-x-2">
+          <Panel position="top-left" className="space-x-2">
             <Button variant="outline" size="sm">
               <Plus className="h-4 w-4" />
               Novo Fluxo
@@ -170,16 +244,204 @@ export default function FlowEditor() {
         </ReactFlow>
 
         {/* Painel de propriedades (quando um nó estiver selecionado) */}
-        {selectedNodeType && (
-          <div className="absolute right-4 top-4 w-80">
+        {selectedNode && (
+          <div className="absolute right-4 top-4 w-56 z-50">
             <Card className="gradient-card shadow-card">
-              <CardHeader>
-                <CardTitle className="text-lg">Propriedades</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Propriedades do Nó</CardTitle>
+                <button
+                  className="ml-2 px-2 py-1 rounded text-foreground hover:bg-muted/50"
+                  title="Fechar"
+                  onClick={() => setSelectedNodeId(null)}
+                >✕</button>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Configure as propriedades do nó selecionado aqui.
-                </p>
+                {/* Label comum a todos */}
+                <label className="block text-sm font-medium mb-1">Label</label>
+                <input
+                  className="w-full rounded border px-2 py-1 text-foreground bg-background mb-3"
+                  value={selectedNode.data.label}
+                  onChange={e => updateSelectedNodeLabel(e.target.value)}
+                />
+
+                {/* Campos específicos por tipo de nó */}
+                {selectedNode.type === 'trigger' && (
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium mb-1">Evento/Palavra-chave</label>
+                    <input
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'event' in selectedNode.data ? String(selectedNode.data.event ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, event: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'message' && (
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium mb-1">Mensagem</label>
+                    <textarea
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      rows={3}
+                      value={'message' in selectedNode.data ? String(selectedNode.data.message ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, message: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'media' && (
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium mb-1">URL da Mídia</label>
+                    <input
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'mediaUrl' in selectedNode.data ? String(selectedNode.data.mediaUrl ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, mediaUrl: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'condition' && (
+                  <div className="mb-3 space-y-2">
+                    <label className="block text-sm font-medium mb-1">Opções de Condição</label>
+                    {('options' in selectedNode.data && Array.isArray((selectedNode.data as any).options) ? (selectedNode.data as any).options : []).map((opt: any, idx: number) => (
+                      <div key={opt.id} className="flex items-center gap-2 mb-1">
+                        <input
+                          className="flex-1 rounded border px-2 py-1 text-foreground bg-background"
+                          value={opt.label}
+                          onChange={e => {
+                            const value = e.target.value;
+                            setNodes(nds => nds.map(node => {
+                              if (node.id !== selectedNode.id) return node;
+                              const optionsArr = ('options' in node.data && Array.isArray((node.data as any).options)) ? (node.data as any).options : [];
+                              const newOptions = optionsArr.map((o: any, i: number) => i === idx ? { ...o, label: value } : o);
+                              return { ...node, data: { ...node.data, options: newOptions } };
+                            }));
+                          }}
+                        />
+                        {('options' in selectedNode.data && (selectedNode.data as any).options.length > 2) && (
+                          <button
+                            type="button"
+                            className="text-destructive px-2 py-1 rounded hover:bg-destructive/10"
+                            onClick={() => {
+                              setNodes(nds => nds.map(node => {
+                                if (node.id !== selectedNode.id) return node;
+                                const optionsArr = ('options' in node.data && Array.isArray((node.data as any).options)) ? (node.data as any).options : [];
+                                const newOptions = optionsArr.filter((_: any, i: number) => i !== idx);
+                                return { ...node, data: { ...node.data, options: newOptions } };
+                              }));
+                            }}
+                          >Remover</button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="mt-2 px-3 py-1 rounded bg-primary text-white hover:bg-primary/80"
+                      onClick={() => {
+                        setNodes(nds => nds.map(node => {
+                          if (node.id !== selectedNode.id) return node;
+                          const optionsArr = ('options' in node.data && Array.isArray((node.data as any).options)) ? (node.data as any).options : [];
+                          const nextId = optionsArr.length > 0 ? Math.max(...optionsArr.map((o: any) => o.id)) + 1 : 1;
+                          return { ...node, data: { ...node.data, options: [...optionsArr, { id: nextId, label: `Opção ${nextId}` }] } };
+                        }));
+                      }}
+                    >Adicionar Opção</button>
+                    <p className="text-xs text-muted-foreground mt-2">Conecte cada opção a um fluxo diferente arrastando a seta do nó.</p>
+                  </div>
+                )}
+                {selectedNode.type === 'http' && (
+                  <div className="mb-3 space-y-2">
+                    <label className="block text-sm font-medium mb-1">URL</label>
+                    <input
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'httpUrl' in selectedNode.data ? String(selectedNode.data.httpUrl ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, httpUrl: value } } : node));
+                      }}
+                    />
+                    <label className="block text-sm font-medium mb-1">Método</label>
+                    <select
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'httpMethod' in selectedNode.data ? String(selectedNode.data.httpMethod ?? 'GET') : 'GET'}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, httpMethod: value } } : node));
+                      }}
+                    >
+                      <option value="GET">GET</option>
+                      <option value="POST">POST</option>
+                      <option value="PUT">PUT</option>
+                      <option value="DELETE">DELETE</option>
+                    </select>
+                    <label className="block text-sm font-medium mb-1">Payload (JSON)</label>
+                    <textarea
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      rows={2}
+                      value={'httpPayload' in selectedNode.data ? String(selectedNode.data.httpPayload ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, httpPayload: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'variable' && (
+                  <div className="mb-3 space-y-2">
+                    <label className="block text-sm font-medium mb-1">Nome da Variável</label>
+                    <input
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'varName' in selectedNode.data ? String(selectedNode.data.varName ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, varName: value } } : node));
+                      }}
+                    />
+                    <label className="block text-sm font-medium mb-1">Valor</label>
+                    <input
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'varValue' in selectedNode.data ? String(selectedNode.data.varValue ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, varValue: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'wait' && (
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium mb-1">Tempo de espera (segundos)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      value={'waitTime' in selectedNode.data ? Number(selectedNode.data.waitTime ?? 1) : 1}
+                      onChange={e => {
+                        const value = Number(e.target.value);
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, waitTime: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
+                {selectedNode.type === 'human' && (
+                  <div className="mb-3">
+                    <label className="block text-sm font-medium mb-1">Instrução para Operador</label>
+                    <textarea
+                      className="w-full rounded border px-2 py-1 text-foreground bg-background"
+                      rows={2}
+                      value={'instruction' in selectedNode.data ? String(selectedNode.data.instruction ?? '') : ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setNodes(nds => nds.map(node => node.id === selectedNode.id ? { ...node, data: { ...node.data, instruction: value } } : node));
+                      }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
