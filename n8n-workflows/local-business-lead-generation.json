@@ -1,0 +1,443 @@
+{
+  "name": "Geração de Leads - Empresas Locais",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Trigger Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Configurações Iniciais\n\nDefina os parâmetros de busca:",
+        "height": 80,
+        "width": 400
+      },
+      "id": "note1",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 140]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "cidade",
+              "value": "São Paulo"
+            },
+            {
+              "name": "estado",
+              "value": "SP"
+            },
+            {
+              "name": "nicho",
+              "value": "restaurantes pequenos"
+            },
+            {
+              "name": "palavrasChave",
+              "value": "restaurante, lanchonete, pizzaria, hamburgeria"
+            }
+          ],
+          "number": [
+            {
+              "name": "maxResultados",
+              "value": 20
+            }
+          ]
+        }
+      },
+      "id": "config-node",
+      "name": "Configurações de Busca",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "serpApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_maps"
+            },
+            {
+              "name": "q",
+              "value": "={{ $node['Configurações de Busca'].json.palavrasChave }} em {{ $node['Configurações de Busca'].json.cidade }}"
+            },
+            {
+              "name": "type",
+              "value": "search"
+            },
+            {
+              "name": "hl",
+              "value": "pt-br"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "serpapi-node",
+      "name": "Buscar no Google Maps",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300],
+      "notes": "Busca empresas usando SerpAPI - Google Maps"
+    },
+    {
+      "parameters": {
+        "url": "https://www.google.com/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $node['Configurações de Busca'].json.palavrasChave }} {{ $node['Configurações de Busca'].json.cidade }} contato telefone"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          }
+        }
+      },
+      "id": "google-search-node",
+      "name": "Busca Alternativa Google",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 480],
+      "notes": "Busca alternativa caso não use SerpAPI"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "merge-node",
+      "name": "Combinar Resultados",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [850, 390]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processa e extrai informações das empresas encontradas\nconst items = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Se vier do SerpAPI (Google Maps)\n  if (data.local_results) {\n    for (const result of data.local_results.slice(0, 20)) {\n      items.push({\n        json: {\n          nomeEmpresa: result.title || 'N/A',\n          endereco: result.address || 'N/A',\n          telefone: result.phone || '',\n          website: result.website || '',\n          tipo: result.type || 'Negócio Local',\n          avaliacao: result.rating || 0,\n          totalAvaliacoes: result.reviews || 0,\n          horarios: result.hours || 'N/A',\n          googleMapsLink: result.link || '',\n          fonte: 'Google Maps',\n          dataExtracao: new Date().toISOString()\n        }\n      });\n    }\n  }\n  \n  // Se vier de busca HTML alternativa\n  if (data.body && typeof data.body === 'string') {\n    // Extração básica com regex (simplificada)\n    const phoneRegex = /\\(?\\d{2}\\)?\\s?\\d{4,5}-?\\d{4}/g;\n    const phones = data.body.match(phoneRegex) || [];\n    \n    if (phones.length > 0) {\n      items.push({\n        json: {\n          telefone: phones[0],\n          fonte: 'Web Scraping',\n          dataExtracao: new Date().toISOString()\n        }\n      });\n    }\n  }\n}\n\nreturn items.length > 0 ? items : [{ json: { erro: 'Nenhum resultado encontrado' } }];"
+      },
+      "id": "code-node",
+      "name": "Processar e Extrair Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 390]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.telefone }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "filter-node",
+      "name": "Filtrar com Telefone",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 1,
+      "position": [1250, 390]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "leads",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nome_empresa": "={{ $json.nomeEmpresa }}",
+            "endereco": "={{ $json.endereco }}",
+            "telefone": "={{ $json.telefone }}",
+            "website": "={{ $json.website }}",
+            "tipo": "={{ $json.tipo }}",
+            "avaliacao": "={{ $json.avaliacao }}",
+            "total_avaliacoes": "={{ $json.totalAvaliacoes }}",
+            "fonte": "={{ $json.fonte }}",
+            "status": "novo",
+            "data_extracao": "={{ $json.dataExtracao }}"
+          }
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "supabase-insert-node",
+      "name": "Salvar no Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1450, 390],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gera mensagem personalizada para WhatsApp\nconst items = [];\n\nfor (const item of $input.all()) {\n  const empresa = item.json;\n  \n  // Remove caracteres especiais do telefone\n  let telefone = empresa.telefone.replace(/\\D/g, '');\n  \n  // Adiciona código do país se necessário\n  if (!telefone.startsWith('55')) {\n    telefone = '55' + telefone;\n  }\n  \n  // Mensagem personalizada\n  const mensagem = `Olá! 👋\\n\\nMeu nome é [SEU NOME] e trabalho com automação de processos e atendimento via WhatsApp para empresas locais.\\n\\nNotei que ${empresa.nomeEmpresa} é um negócio muito bem avaliado aqui na região! 🌟\\n\\nVocê já pensou em automatizar:\\n✅ Agendamentos\\n✅ Pedidos\\n✅ Atendimento ao cliente\\n✅ Follow-up de vendas\\n\\nPosso te mostrar como isso pode economizar tempo e aumentar suas vendas?\\n\\nTenho cases de sucesso com empresas similares. Posso te enviar alguns exemplos?`;\n  \n  items.push({\n    json: {\n      ...empresa,\n      telefoneFormatado: telefone,\n      mensagem: mensagem,\n      statusEnvio: 'pendente'\n    }\n  });\n}\n\nreturn items;"
+      },
+      "id": "message-builder-node",
+      "name": "Criar Mensagem WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 390]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-node",
+      "name": "Aguardar (Anti-Spam)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1850, 390],
+      "webhookId": "aguardar-envio"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "requestMethod": "POST",
+        "url": "=https://api.evolutionapi.com/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefoneFormatado }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.mensagem }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "whatsapp-send-node",
+      "name": "Enviar WhatsApp (Evolution API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2050, 390],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Evolution API"
+        }
+      },
+      "notes": "Envia mensagem via Evolution API"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "leads",
+        "updateKey": "telefone",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "contatado",
+            "data_primeiro_contato": "={{ new Date().toISOString() }}",
+            "resposta_whatsapp": "={{ $json.response }}"
+          }
+        }
+      },
+      "id": "supabase-update-node",
+      "name": "Atualizar Status no Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2250, 390],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ IMPORTANTE\n\n1. Configure suas credenciais:\n   - SerpAPI (opcional mas recomendado)\n   - Supabase\n   - Evolution API\n\n2. Ajuste a mensagem no nó \"Criar Mensagem WhatsApp\"\n\n3. Configure o intervalo de espera para evitar bloqueios\n\n4. Teste com poucos contatos primeiro!",
+        "height": 240,
+        "width": 380,
+        "color": 6
+      },
+      "id": "note2",
+      "name": "Sticky Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1640, 140]
+    }
+  ],
+  "connections": {
+    "Trigger Manual": {
+      "main": [
+        [
+          {
+            "node": "Configurações de Busca",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurações de Busca": {
+      "main": [
+        [
+          {
+            "node": "Buscar no Google Maps",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Busca Alternativa Google",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar no Google Maps": {
+      "main": [
+        [
+          {
+            "node": "Combinar Resultados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busca Alternativa Google": {
+      "main": [
+        [
+          {
+            "node": "Combinar Resultados",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combinar Resultados": {
+      "main": [
+        [
+          {
+            "node": "Processar e Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar e Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "Filtrar com Telefone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar com Telefone": {
+      "main": [
+        [
+          {
+            "node": "Salvar no Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar no Supabase": {
+      "main": [
+        [
+          {
+            "node": "Criar Mensagem WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Mensagem WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Aguardar (Anti-Spam)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aguardar (Anti-Spam)": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp (Evolution API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp (Evolution API)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Status no Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-07T00:00:00.000Z",
+      "updatedAt": "2025-01-07T00:00:00.000Z",
+      "id": "1",
+      "name": "lead-generation"
+    },
+    {
+      "createdAt": "2025-01-07T00:00:00.000Z",
+      "updatedAt": "2025-01-07T00:00:00.000Z",
+      "id": "2",
+      "name": "whatsapp-automation"
+    }
+  ],
+  "meta": {
+    "instanceId": "local"
+  },
+  "id": "1",
+  "versionId": "1"
+}
